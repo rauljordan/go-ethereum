@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -59,10 +58,8 @@ func (c *Collation) AddTransaction(tx *types.Transaction) {
 // Serialize method  serializes the collation body
 func (c *Collation) Serialize() ([]byte, error) {
 
-	blob, err := utils.ConvertInterface(c.transactions, reflect.Slice)
-	if err != nil {
-		return nil, fmt.Errorf("%v", err)
-	}
+	blob := utils.ConvertToInterface(c.transactions)
+
 	serializedtx, err := utils.Serialize(blob)
 
 	if err != nil {
@@ -76,16 +73,4 @@ func (c *Collation) Serialize() ([]byte, error) {
 
 	return serializedtx, nil
 
-}
-
-func (c *Collation) GasUsed() *big.Int {
-	g := uint64(0)
-	for _, tx := range c.transactions {
-		if g > math.MaxUint64-(g+tx.Gas()) {
-			g = math.MaxUint64
-			break
-		}
-		g += tx.Gas()
-	}
-	return big.NewInt(0).SetUint64(g)
 }
