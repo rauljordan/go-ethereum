@@ -55,15 +55,41 @@ func (c *Collation) AddTransaction(tx *types.Transaction) {
 	c.transactions = append(c.transactions, tx)
 }
 
+func (c *Collation) CreateRawBlobs() ([]*utils.RawBlob, error) {
+
+	// It does not skip evm execution by default
+
+	blobs := make([]*utils.RawBlob, len(c.transactions))
+	for i, v := range c.transactions {
+
+		err := error(nil)
+		blobs[i], err = utils.NewRawBlob(v, false)
+
+		if err != nil {
+			return nil, fmt.Errorf("Creation of raw blobs from transactions failed %v", err)
+		}
+
+	}
+
+	return blobs, nil
+
+}
+
 // Serialize method  serializes the collation body
 func (c *Collation) Serialize() ([]byte, error) {
 
-	blob, err := utils.ConvertToRawBlob(c.transactions)
+	/*blob, err := utils.ConvertToRawBlob(c.transactions)
+	if err != nil {
+		return nil, fmt.Errorf("%v", err)
+	}**/
+
+	blobs, err := c.CreateRawBlobs()
+
 	if err != nil {
 		return nil, fmt.Errorf("%v", err)
 	}
 
-	serializedtx, err := utils.Serialize(blob)
+	serializedtx, err := utils.Serialize(blobs)
 
 	if err != nil {
 		return nil, fmt.Errorf("%v", err)
@@ -76,4 +102,13 @@ func (c *Collation) Serialize() ([]byte, error) {
 
 	return serializedtx, nil
 
+}
+
+func (c *Collation) Deserialize(serialisedblob []byte) error {
+	var blobs []utils.RawBlob
+
+	deserializedblobs, err := utils.Deserialize(serialisedblob)
+	if err != nil {
+		return fmt.Errorf("%v", err)
+	}
 }
