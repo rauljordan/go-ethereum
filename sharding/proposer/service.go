@@ -3,6 +3,9 @@
 package proposer
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/sharding"
 	"github.com/ethereum/go-ethereum/sharding/mainchain"
@@ -28,7 +31,7 @@ func NewProposer(client mainchain.Client, shardp2p sharding.ShardP2P, txpool sha
 // Start the main loop for proposing collations.
 func (p *Proposer) Start() error {
 	log.Info("Starting proposer service")
-	// TODO: Propose collations.
+	go p.subscribeTransactions()
 	return nil
 }
 
@@ -36,4 +39,30 @@ func (p *Proposer) Start() error {
 func (p *Proposer) Stop() error {
 	log.Info("Stopping proposer service")
 	return nil
+}
+
+func (p *Proposer) subscribeTransactions() {
+	// Subscribes to incoming transactions from the shardp2p network.
+	for {
+		subchan := make(chan int)
+		sub := p.shardp2p.TransactionsFeed().Subscribe(subchan)
+		// 10 second time out for the subscription.
+		timeout := time.NewTimer(10 * time.Second)
+		select {
+		case v := <-subchan:
+			log.Info(fmt.Sprintf("Received transaction with id: %d", v))
+		case <-timeout.C:
+			log.Error("Receive timeout")
+		}
+
+		sub.Unsubscribe()
+		select {
+		case _, ok := <-sub.Err():
+			if ok {
+				log.Error("Channel not closed after unsubscribe")
+			}
+		case <-timeout.C:
+			log.Error("Unsubscribe timeout")
+		}
+	}
 }
