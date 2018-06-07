@@ -42,10 +42,10 @@ func (p *Proposer) Stop() error {
 }
 
 func (p *Proposer) subscribeTransactions() {
-	// Subscribes to incoming transactions from the shardp2p network.
+	// Subscribes to incoming transactions from the txpool via the shardp2p network.
 	for {
 		subchan := make(chan int)
-		sub := p.shardp2p.TransactionsFeed().Subscribe(subchan)
+		sub := p.txpool.TransactionsFeed().Subscribe(subchan)
 		// 10 second time out for the subscription.
 		timeout := time.NewTimer(10 * time.Second)
 		select {

@@ -18,13 +18,13 @@ type Node interface {
 
 // ShardP2P defines an interface for a peer-to-peer service in a
 // sharded Ethereum blockchain.
-type ShardP2P interface {
-	TransactionsFeed() *event.Feed
-}
+type ShardP2P interface{}
 
 // TXPool defines an interface for a transaction pool service that handles
 // incoming shard transactions in the network.
-type TXPool interface{}
+type TXPool interface {
+	TransactionsFeed() *event.Feed
+}
 
 // Actor refers to either a notary, proposer, or observer in the sharding spec.
 type Actor interface {
