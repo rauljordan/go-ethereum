@@ -72,7 +72,7 @@ func (p *Proposer) Start() {
 
 // Stop the main loop for proposing collations.
 func (p *Proposer) Stop() error {
-	log.Info(fmt.Sprintf("Stopping proposer service in shard %d", p.shard.ShardID()))
+	log.Info(fmt.Sprintf("Stopping proposer service in shard %d", p.shardID))
 	defer p.cancel()
 	defer close(p.requestsChan)
 	defer close(p.errChan)
