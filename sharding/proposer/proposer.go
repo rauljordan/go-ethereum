@@ -16,7 +16,7 @@ import (
 // an addHeader transaction to the sharding manager contract.
 // There can only exist one header per period per shard, it is the proposer's
 // responsibility to check if a header has been added.
-func AddHeader(transactor mainchain.ContractTransactor, collation *sharding.Collation) error {
+func AddHeader(transactor mainchain.ContractTransactor, adder mainchain.RecordAdder, collation *sharding.Collation) error {
 	log.Info("Adding header to SMC")
 
 	txOps, err := transactor.CreateTXOpts(big.NewInt(0))
@@ -28,7 +28,7 @@ func AddHeader(transactor mainchain.ContractTransactor, collation *sharding.Coll
 	var chunkRoot [32]byte
 	copy(chunkRoot[:], collation.Header().ChunkRoot().Bytes())
 
-	tx, err := transactor.SMCTransactor().AddHeader(txOps, collation.Header().ShardID(), collation.Header().Period(), chunkRoot, collation.Header().Sig())
+	tx, err := adder.AddHeader(txOps, collation.Header().ShardID(), collation.Header().Period(), chunkRoot, collation.Header().Sig())
 	if err != nil {
 		return fmt.Errorf("unable to add header to SMC: %v", err)
 	}
@@ -40,7 +40,7 @@ func AddHeader(transactor mainchain.ContractTransactor, collation *sharding.Coll
 // and body. Header consists of shardID, ChunkRoot, period,
 // proposer addr and signatures. Body contains serialized blob
 // of a collations transactions.
-func createCollation(caller mainchain.ContractCaller, account *accounts.Account, signer mainchain.Signer, shardID *big.Int, period *big.Int, txs []*types.Transaction) (*sharding.Collation, error) {
+func createCollation(caller mainchain.ContractCaller, fetcher mainchain.RecordFetcher, account *accounts.Account, signer mainchain.Signer, shardID *big.Int, period *big.Int, txs []*types.Transaction) (*sharding.Collation, error) {
 	// shardId has to be within range
 	shardCount, err := caller.GetShardCount()
 	if err != nil {
@@ -51,7 +51,7 @@ func createCollation(caller mainchain.ContractCaller, account *accounts.Account,
 	}
 
 	// check with SMC to see if we can add the header.
-	if a, _ := checkHeaderAdded(caller, shardID, period); !a {
+	if a, _ := checkHeaderAdded(fetcher, shardID, period); !a {
 		return nil, fmt.Errorf("can't create collation, collation with same period has already been added")
 	}
 
@@ -83,9 +83,9 @@ func createCollation(caller mainchain.ContractCaller, account *accounts.Account,
 // submitted to the main chain. There can only be one header per shard
 // per period, proposer should check if a header's already submitted,
 // checkHeaderAdded returns true if it is available, false if it is unavailable.
-func checkHeaderAdded(caller mainchain.ContractCaller, shardID *big.Int, period *big.Int) (bool, error) {
+func checkHeaderAdded(fetcher mainchain.RecordFetcher, shardID *big.Int, period *big.Int) (bool, error) {
 	// Get the period of the last header.
-	lastPeriod, err := caller.SMCCaller().LastSubmittedCollation(&bind.CallOpts{}, shardID)
+	lastPeriod, err := fetcher.LastSubmittedCollation(&bind.CallOpts{}, shardID)
 	if err != nil {
 		return false, fmt.Errorf("unable to get the period of last submitted collation: %v", err)
 	}

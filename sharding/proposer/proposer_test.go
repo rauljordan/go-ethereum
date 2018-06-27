@@ -29,7 +29,7 @@ func TestCreateCollation(t *testing.T) {
 			nil, 0, nil, data))
 	}
 
-	collation, err := createCollation(node, node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
+	collation, err := createCollation(node, node.SMCCaller(), node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
 	if err != nil {
 		t.Fatalf("Create collation failed: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestCreateCollation(t *testing.T) {
 	}
 
 	// negative test case #1: create collation with shard > shardCount.
-	collation, err = createCollation(node, node.Account(), node, big.NewInt(101), big.NewInt(2), txs)
+	collation, err = createCollation(node, node.SMCCaller(), node.Account(), node, big.NewInt(101), big.NewInt(2), txs)
 	if err == nil {
 		t.Errorf("Create collation should have failed with invalid shard number")
 	}
@@ -52,13 +52,13 @@ func TestCreateCollation(t *testing.T) {
 		badTxs = append(badTxs, types.NewTransaction(0, common.HexToAddress("0x0"),
 			nil, 0, nil, data))
 	}
-	collation, err = createCollation(node, node.Account(), node, big.NewInt(0), big.NewInt(2), badTxs)
+	collation, err = createCollation(node, node.SMCCaller(), node.Account(), node, big.NewInt(0), big.NewInt(2), badTxs)
 	if err == nil {
 		t.Errorf("Create collation should have failed with Txs longer than collation body limit")
 	}
 
 	// normal test case #1 create collation with correct parameters.
-	collation, err = createCollation(node, node.Account(), node, big.NewInt(5), big.NewInt(5), txs)
+	collation, err = createCollation(node, node.SMCCaller(), node.Account(), node, big.NewInt(5), big.NewInt(5), txs)
 	if err != nil {
 		t.Errorf("Create collation failed: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestAddCollation(t *testing.T) {
 			nil, 0, nil, data))
 	}
 
-	collation, err := createCollation(node, node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
+	collation, err := createCollation(node, node.SMCCaller(), node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
 	if err != nil {
 		t.Errorf("Create collation failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestAddCollation(t *testing.T) {
 	}
 
 	// normal test case #1 create collation with normal parameters.
-	err = AddHeader(node, collation)
+	err = AddHeader(node, node.SMCTransactor(), collation)
 	if err != nil {
 		t.Errorf("%v", err)
 	}
@@ -117,7 +117,7 @@ func TestAddCollation(t *testing.T) {
 	}
 
 	// negative test case #1 create the same collation that just got added to SMC.
-	collation, err = createCollation(node, node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
+	collation, err = createCollation(node, node.SMCCaller(), node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
 	if err == nil {
 		t.Errorf("Create collation should fail due to same collation in SMC")
 	}
@@ -135,7 +135,7 @@ func TestCheckCollation(t *testing.T) {
 			nil, 0, nil, data))
 	}
 
-	collation, err := createCollation(node, node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
+	collation, err := createCollation(node, node.SMCCaller(), node.Account(), node, big.NewInt(0), big.NewInt(1), txs)
 	if err != nil {
 		t.Errorf("Create collation failed: %v", err)
 	}
@@ -144,14 +144,14 @@ func TestCheckCollation(t *testing.T) {
 		backend.Commit()
 	}
 
-	err = AddHeader(node, collation)
+	err = AddHeader(node, node.SMCTransactor(), collation)
 	if err != nil {
 		t.Errorf("%v", err)
 	}
 	backend.Commit()
 
 	// normal test case 1: check if we can still add header for period 1, should return false.
-	a, err := checkHeaderAdded(node, big.NewInt(0), big.NewInt(1))
+	a, err := checkHeaderAdded(node.SMCCaller(), big.NewInt(0), big.NewInt(1))
 	if err != nil {
 		t.Errorf("Can not check header submitted: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestCheckCollation(t *testing.T) {
 		t.Errorf("Check header submitted shouldn't return: %v", a)
 	}
 	// normal test case 2: check if we can add header for period 2, should return true.
-	a, err = checkHeaderAdded(node, big.NewInt(0), big.NewInt(2))
+	a, err = checkHeaderAdded(node.SMCCaller(), big.NewInt(0), big.NewInt(2))
 	if !a {
 		t.Errorf("Check header submitted shouldn't return: %v", a)
 	}

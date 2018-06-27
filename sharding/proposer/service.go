@@ -66,7 +66,7 @@ func (p *Proposer) Start() {
 	p.shard = sharding.NewShard(big.NewInt(int64(p.shardID)), p.dbService.DB())
 	p.requestsChan = make(chan *types.Transaction)
 	p.txpoolSub = p.txpool.TransactionsFeed().Subscribe(p.requestsChan)
-	go p.proposeCollations(p.client, p.client.ChainReader(), p.client, p.client.Account())
+	go p.proposeCollations(p.client, p.client.SMCTransactor(), p.client.ChainReader(), p.client.SMCCaller(), p.client, p.client.Account())
 	go utils.HandleServiceErrors(p.ctx.Done(), p.errChan)
 }
 
@@ -81,7 +81,7 @@ func (p *Proposer) Stop() error {
 }
 
 // proposeCollations listens to the transaction feed and submits collations over an interval.
-func (p *Proposer) proposeCollations(caller mainchain.ContractCaller, reader mainchain.Reader, signer mainchain.Signer, account *accounts.Account) {
+func (p *Proposer) proposeCollations(manager mainchain.ContractManager, adder mainchain.RecordAdder, reader mainchain.Reader, fetcher mainchain.RecordFetcher, signer mainchain.Signer, account *accounts.Account) {
 	for {
 		select {
 		case tx := <-p.requestsChan:
@@ -89,15 +89,15 @@ func (p *Proposer) proposeCollations(caller mainchain.ContractCaller, reader mai
 			log.Info(fmt.Sprintf("Received transaction: %x", tx.Hash()))
 			blockNumber, err := reader.BlockByNumber(p.ctx, nil)
 			if err != nil {
-				p.errChan <- fmt.Errorf("could not propose collation: %v", err)
+				p.errChan <- fmt.Errorf("could not fetch latest block number: %v", err)
 				continue
 			}
 			period := new(big.Int).Div(blockNumber.Number(), big.NewInt(p.config.PeriodLength))
 
 			// Create collation.
-			collation, err := createCollation(caller, account, signer, p.shard.ShardID(), period, []*types.Transaction{tx})
+			collation, err := createCollation(manager, fetcher, account, signer, p.shard.ShardID(), period, []*types.Transaction{tx})
 			if err != nil {
-				p.errChan <- fmt.Errorf("could not propose collation: %v", err)
+				p.errChan <- fmt.Errorf("could not create collation: %v", err)
 				continue
 			}
 
@@ -110,12 +110,12 @@ func (p *Proposer) proposeCollations(caller mainchain.ContractCaller, reader mai
 			log.Info(fmt.Sprintf("Saved collation with header hash %v to shardChainDB", collation.Header().Hash().Hex()))
 
 			// Check SMC if we can submit header before AddHeader to SMC.
-			canAdd, err := checkHeaderAdded(caller, p.shard.ShardID(), period)
+			canAdd, err := checkHeaderAdded(fetcher, p.shard.ShardID(), period)
 			if err != nil {
 				p.errChan <- fmt.Errorf("could not propose collation: %v", err)
 			}
 			if canAdd {
-				AddHeader(p.client, collation)
+				AddHeader(manager, adder, collation)
 			}
 		case <-p.ctx.Done():
 			log.Debug("Proposer context closed, exiting goroutine")

@@ -47,6 +47,10 @@ func (f *faultySMCCaller) CollationRecords(opts *bind.CallOpts, arg0 *big.Int, a
 	return *res, errors.New("error fetching collation record")
 }
 
+func (f *faultySMCCaller) LastSubmittedCollation(opts *bind.CallOpts, shardID *big.Int) (*big.Int, error) {
+	return nil, errors.New("error fetching last submitted collation period")
+}
+
 func (g *goodSMCCaller) CollationRecords(opts *bind.CallOpts, arg0 *big.Int, arg1 *big.Int) (struct {
 	ChunkRoot [32]byte
 	Proposer  common.Address
@@ -64,6 +68,10 @@ func (g *goodSMCCaller) CollationRecords(opts *bind.CallOpts, arg0 *big.Int, arg
 	res.Proposer = common.BytesToAddress([]byte{})
 	res.IsElected = false
 	return *res, nil
+}
+
+func (g *goodSMCCaller) LastSubmittedCollation(opts *bind.CallOpts, shardID *big.Int) (*big.Int, error) {
+	return big.NewInt(0), nil
 }
 
 func (f *faultyReader) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {

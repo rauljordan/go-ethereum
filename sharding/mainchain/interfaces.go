@@ -59,10 +59,17 @@ type Reader interface {
 // RecordFetcher serves as an interface for a struct that can fetch collation information
 // from a sharding manager contract on the Ethereum mainchain.
 type RecordFetcher interface {
-	CollationRecords(opts *bind.CallOpts, arg0 *big.Int, arg1 *big.Int) (struct {
+	CollationRecords(opts *bind.CallOpts, shardID *big.Int, period *big.Int) (struct {
 		ChunkRoot [32]byte
 		Proposer  common.Address
 		IsElected bool
 		Signature []byte
 	}, error)
+	LastSubmittedCollation(opts *bind.CallOpts, shardID *big.Int) (*big.Int, error)
+}
+
+// RecordAdder serves as an interface for a struct that can add collation information
+// to a sharding manager contract on the Ethereum mainchain.
+type RecordAdder interface {
+	AddHeader(opts *bind.TransactOpts, shardID *big.Int, period *big.Int, chunkRoot [32]byte, signature []byte) (*types.Transaction, error)
 }
