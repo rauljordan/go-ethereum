@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -16,22 +17,25 @@ import (
 	"github.com/ethereum/go-ethereum/sharding/p2p"
 	"github.com/ethereum/go-ethereum/sharding/params"
 	"github.com/ethereum/go-ethereum/sharding/txpool"
+	"github.com/ethereum/go-ethereum/sharding/utils"
 )
 
 // Proposer holds functionality required to run a collation proposer
 // in a sharded system. Must satisfy the Service interface defined in
 // sharding/service.go.
 type Proposer struct {
-	config    *params.Config
-	client    *mainchain.SMCClient
-	p2p       *p2p.Server
-	txpool    *txpool.TXPool
-	txpoolSub event.Subscription
-	dbService *database.ShardDB
-	shardID   int
-	shard     *sharding.Shard
-	ctx       context.Context
-	cancel    context.CancelFunc
+	config       *params.Config
+	client       *mainchain.SMCClient
+	p2p          *p2p.Server
+	txpool       *txpool.TXPool
+	txpoolSub    event.Subscription
+	dbService    *database.ShardDB
+	shardID      int
+	shard        *sharding.Shard
+	ctx          context.Context
+	cancel       context.CancelFunc
+	errChan      chan error
+	requestsChan chan *types.Transaction
 }
 
 // NewProposer creates a struct instance of a proposer service.
@@ -39,6 +43,7 @@ type Proposer struct {
 // and a shard transaction pool.
 func NewProposer(config *params.Config, client *mainchain.SMCClient, p2p *p2p.Server, txpool *txpool.TXPool, dbService *database.ShardDB, shardID int) (*Proposer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+	errChan := make(chan error)
 	return &Proposer{
 		config,
 		client,
@@ -49,36 +54,68 @@ func NewProposer(config *params.Config, client *mainchain.SMCClient, p2p *p2p.Se
 		shardID,
 		nil,
 		ctx,
-		cancel}, nil
+		cancel,
+		errChan,
+		nil,
+	}, nil
 }
 
 // Start the main loop for proposing collations.
 func (p *Proposer) Start() {
 	log.Info("Starting proposer service")
-	shard := sharding.NewShard(big.NewInt(int64(p.shardID)), p.dbService.DB())
-	p.shard = shard
-	go p.proposeCollations()
+	p.shard = sharding.NewShard(big.NewInt(int64(p.shardID)), p.dbService.DB())
+	p.requestsChan = make(chan *types.Transaction)
+	p.txpoolSub = p.txpool.TransactionsFeed().Subscribe(p.requestsChan)
+	go p.proposeCollations(p.client, p.client.ChainReader(), p.client, p.client.Account())
+	go utils.HandleServiceErrors(p.ctx.Done(), p.errChan)
 }
 
 // Stop the main loop for proposing collations.
 func (p *Proposer) Stop() error {
 	log.Info(fmt.Sprintf("Stopping proposer service in shard %d", p.shard.ShardID()))
 	defer p.cancel()
+	defer close(p.requestsChan)
+	defer close(p.errChan)
 	p.txpoolSub.Unsubscribe()
 	return nil
 }
 
 // proposeCollations listens to the transaction feed and submits collations over an interval.
-func (p *Proposer) proposeCollations() {
-	requests := make(chan *types.Transaction)
-	p.txpoolSub = p.txpool.TransactionsFeed().Subscribe(requests)
-	defer close(requests)
+func (p *Proposer) proposeCollations(caller mainchain.ContractCaller, reader mainchain.Reader, signer mainchain.Signer, account *accounts.Account) {
 	for {
 		select {
-		case tx := <-requests:
+		case tx := <-p.requestsChan:
+
 			log.Info(fmt.Sprintf("Received transaction: %x", tx.Hash()))
-			if err := p.createCollation(p.ctx, []*types.Transaction{tx}); err != nil {
-				log.Error(fmt.Sprintf("Create collation failed: %v", err))
+			blockNumber, err := reader.BlockByNumber(p.ctx, nil)
+			if err != nil {
+				p.errChan <- fmt.Errorf("could not propose collation: %v", err)
+				continue
+			}
+			period := new(big.Int).Div(blockNumber.Number(), big.NewInt(p.config.PeriodLength))
+
+			// Create collation.
+			collation, err := createCollation(caller, account, signer, p.shard.ShardID(), period, []*types.Transaction{tx})
+			if err != nil {
+				p.errChan <- fmt.Errorf("could not propose collation: %v", err)
+				continue
+			}
+
+			// Saves the collation to persistent storage in the shardDB.
+			if err := p.shard.SaveCollation(collation); err != nil {
+				p.errChan <- fmt.Errorf("could not save collation to persistent storage: %v", err)
+				continue
+			}
+
+			log.Info(fmt.Sprintf("Saved collation with header hash %v to shardChainDB", collation.Header().Hash().Hex()))
+
+			// Check SMC if we can submit header before AddHeader to SMC.
+			canAdd, err := checkHeaderAdded(caller, p.shard.ShardID(), period)
+			if err != nil {
+				p.errChan <- fmt.Errorf("could not propose collation: %v", err)
+			}
+			if canAdd {
+				AddHeader(p.client, collation)
 			}
 		case <-p.ctx.Done():
 			log.Debug("Proposer context closed, exiting goroutine")
@@ -88,38 +125,4 @@ func (p *Proposer) proposeCollations() {
 			return
 		}
 	}
-}
-
-func (p *Proposer) createCollation(ctx context.Context, txs []*types.Transaction) error {
-	// Get current block number.
-	blockNumber, err := p.client.ChainReader().BlockByNumber(ctx, nil)
-	if err != nil {
-		return err
-	}
-	period := new(big.Int).Div(blockNumber.Number(), big.NewInt(p.config.PeriodLength))
-
-	// Create collation.
-	collation, err := createCollation(p.client, p.client.Account(), p.client, p.shard.ShardID(), period, txs)
-	if err != nil {
-		return err
-	}
-
-	// Saves the collation to persistent storage in the shardDB.
-	if err := p.shard.SaveCollation(collation); err != nil {
-		log.Error(fmt.Sprintf("Could not save collation to persistent storage: %v", err))
-		return nil
-	}
-
-	log.Info(fmt.Sprintf("Saved collation with header hash %v to shardChainDB", collation.Header().Hash().Hex()))
-
-	// Check SMC if we can submit header before addHeader.
-	canAdd, err := checkHeaderAdded(p.client, p.shard.ShardID(), period)
-	if err != nil {
-		return err
-	}
-	if canAdd {
-		AddHeader(p.client, collation)
-	}
-
-	return nil
 }

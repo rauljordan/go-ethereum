@@ -25,7 +25,7 @@ type Syncer struct {
 	config       *params.Config
 	client       *mainchain.SMCClient
 	shardID      int
-	shardChainDB *database.ShardDB
+	dbService    *database.ShardDB
 	p2p          *p2p.Server
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -37,17 +37,17 @@ type Syncer struct {
 // NewSyncer creates a struct instance of a syncer service.
 // It will have access to config, a signer, a p2p server,
 // a shardChainDB, and a shardID.
-func NewSyncer(config *params.Config, client *mainchain.SMCClient, p2p *p2p.Server, shardChainDB *database.ShardDB, shardID int) (*Syncer, error) {
+func NewSyncer(config *params.Config, client *mainchain.SMCClient, p2p *p2p.Server, dbService *database.ShardDB, shardID int) (*Syncer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error)
-	return &Syncer{config, client, shardID, shardChainDB, p2p, ctx, cancel, nil, nil, errChan}, nil
+	return &Syncer{config, client, shardID, dbService, p2p, ctx, cancel, nil, nil, errChan}, nil
 }
 
 // Start the main loop for handling shard chain data requests.
 func (s *Syncer) Start() {
 	log.Info("Starting sync service")
 
-	shard := sharding.NewShard(big.NewInt(int64(s.shardID)), s.shardChainDB.DB())
+	shard := sharding.NewShard(big.NewInt(int64(s.shardID)), s.dbService.DB())
 
 	s.msgChan = make(chan p2p.Message, 100)
 	s.bodyRequests = s.p2p.Feed(messages.CollationBodyRequest{}).Subscribe(s.msgChan)
