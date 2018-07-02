@@ -44,7 +44,6 @@ var (
 		utils.DepositFlag,
 		utils.ActorFlag,
 		utils.ShardIDFlag,
-		configFileFlag,
 	}
 )
 
@@ -52,8 +51,6 @@ func init() {
 	// Initialize the CLI app and start Geth
 	app.HideVersion = true // we have a command to print the version
 	app.Commands = []cli.Command{
-		// See chaincmd.go:
-		initCommand,
 		// See shardingcmd.go:
 		shardingCommand,
 	}
