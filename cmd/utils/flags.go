@@ -83,6 +83,10 @@ func NewApp(gitCommit, usage string) *cli.App {
 
 var (
 	// General settings
+	IPCPathFlag = DirectoryFlag{
+		Name:  "ipcpath",
+		Usage: "Filename for IPC socket/pipe within the datadir (explicit paths escape it)",
+	}
 	DataDirFlag = DirectoryFlag{
 		Name:  "datadir",
 		Usage: "Data directory for the databases and keystore",
