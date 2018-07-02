@@ -6,6 +6,22 @@ import (
 	"strings"
 )
 
+// Custom type which is registered in the flags library which cli uses for
+// argument parsing. This allows us to expand Value to an absolute path when
+// the argument is parsed
+type DirectoryString struct {
+	Value string
+}
+
+func (self *DirectoryString) String() string {
+	return self.Value
+}
+
+func (self *DirectoryString) Set(value string) error {
+	self.Value = expandPath(value)
+	return nil
+}
+
 // Custom cli.Flag type which expand the received string to an absolute path.
 // e.g. ~/.ethereum -> /home/username/.ethereum
 type DirectoryFlag struct {
